@@ -113,6 +113,7 @@ function updateConnectionUI(status, details) {
     btnToggleBrowser.textContent = 'Close Browser';
     btnStartExtract.disabled = state.isExtracting;
     if (qrContainer) qrContainer.classList.add('hidden');
+    showBanner('WhatsApp connected successfully! Select your group below and click "Start Extraction".', 'success');
     fetchGroups();
   } else if (status === 'qr_required') {
     connectionBadge.classList.add('badge-qr');
@@ -126,14 +127,14 @@ function updateConnectionUI(status, details) {
     }
   } else if (status === 'loading') {
     connectionBadge.classList.add('badge-qr');
-    connectionText.textContent = 'WhatsApp Loading...';
+    connectionText.textContent = 'Syncing WhatsApp...';
     btnToggleBrowser.textContent = 'Close Browser';
     btnStartExtract.disabled = true;
     if (qrContainer) {
       qrContainer.classList.remove('hidden');
       qrImage.style.display = 'none';
       qrLoading.style.display = 'block';
-      qrLoading.textContent = 'WhatsApp Web is loading in cloud... QR code will appear here shortly';
+      qrLoading.textContent = details || 'Pairing with phone and syncing WhatsApp... Please wait a moment.';
     }
   } else {
     connectionBadge.classList.add('badge-disconnected');

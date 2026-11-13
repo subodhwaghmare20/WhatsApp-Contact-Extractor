@@ -126,40 +126,53 @@ class WhatsAppBrowser {
     }
 
     try {
-      // 1. Check if authenticated chat pane exists
-      // WhatsApp Web chat list container typically has #pane-side or role="grid" or search input
-      const isAuthenticated = await this.page.evaluate(() => {
-        const sidePane = document.querySelector('#pane-side') || 
-                         document.querySelector('[data-testid="chat-list"]') ||
-                         document.querySelector('div[contenteditable="true"][data-tab="3"]');
-        return Boolean(sidePane);
+      const authInfo = await this.page.evaluate(() => {
+        // A. Check localStorage for multi-device authenticated credentials
+        const hasWid = Boolean(
+          window.localStorage.getItem('last-wid') ||
+          window.localStorage.getItem('last-wid-md') ||
+          window.localStorage.getItem('WASecretBundle')
+        );
+
+        // B. Check DOM for authenticated elements
+        const sidePane = document.querySelector('#pane-side');
+        const chatList = document.querySelector('[data-testid="chat-list"]');
+        const searchInput = document.querySelector('div[contenteditable="true"]');
+        const mainHeader = document.querySelector('header');
+        const introTitle = document.querySelector('[data-testid="intro-title"]');
+        const hasAuthDOM = Boolean(sidePane || chatList || searchInput || mainHeader || introTitle);
+
+        // C. Check if QR code canvas is actively visible on the screen
+        const qrCanvas = document.querySelector('canvas[aria-label*="QR"], canvas[aria-label*="device"], canvas');
+        const isCanvasVisible = qrCanvas && qrCanvas.offsetWidth > 50 && qrCanvas.offsetHeight > 50 && window.getComputedStyle(qrCanvas).display !== 'none';
+        const hasQrContainer = Boolean(
+          document.querySelector('div[data-testid="qrcode"]') ||
+          document.querySelector('[data-ref]')
+        );
+
+        // D. Check for loading / syncing progress
+        const hasProgress = Boolean(
+          document.querySelector('progress') ||
+          document.querySelector('[data-testid="startup-progress"]')
+        );
+
+        return {
+          isAuthenticated: hasWid || hasAuthDOM,
+          isQrVisible: (isCanvasVisible || hasQrContainer) && !hasWid,
+          isLoading: hasProgress
+        };
       });
 
-      if (isAuthenticated) {
+      if (authInfo.isAuthenticated) {
         return { status: 'authenticated', details: 'Ready. Logged in to WhatsApp Web.' };
       }
 
-      // 2. Check if QR code is displayed
-      const hasQrCode = await this.page.evaluate(() => {
-        const qrCanvas = document.querySelector('canvas[aria-label*="QR"], canvas');
-        const qrContainer = document.querySelector('[data-ref]') || 
-                            document.querySelector('div[data-testid="qrcode"]');
-        return Boolean(qrCanvas || qrContainer);
-      });
-
-      if (hasQrCode) {
+      if (authInfo.isQrVisible) {
         return { status: 'qr_required', details: 'QR code displayed. Please scan with WhatsApp on your phone.' };
       }
 
-      // 3. Check if loading/progress bar is present
-      const isLoading = await this.page.evaluate(() => {
-        const progress = document.querySelector('progress') || 
-                         document.querySelector('[data-testid="startup-progress"]');
-        return Boolean(progress);
-      });
-
-      if (isLoading) {
-        return { status: 'loading', details: 'WhatsApp Web is loading/syncing messages...' };
+      if (authInfo.isLoading) {
+        return { status: 'loading', details: 'WhatsApp Web is syncing chats from your phone...' };
       }
 
       return { status: 'loading', details: 'Waiting for WhatsApp Web interface to settle...' };
