@@ -74,35 +74,12 @@ class ParticipantExtractor {
    */
   async extractFromClientStore(groupTitle) {
     return await this.page.evaluate(async (title) => {
-      function getAllFromStore(dbName, storeName) {
+      function openDb(dbName) {
         return new Promise((resolve) => {
-          if (!window.indexedDB) return resolve([]);
+          if (!window.indexedDB) return resolve(null);
           const req = window.indexedDB.open(dbName);
-          req.onsuccess = (e) => {
-            const db = e.target.result;
-            if (!db.objectStoreNames.contains(storeName)) {
-              db.close();
-              return resolve([]);
-            }
-            try {
-              const tx = db.transaction(storeName, 'readonly');
-              const store = tx.objectStore(storeName);
-              const getAllReq = store.getAll();
-              getAllReq.onsuccess = () => {
-                const res = getAllReq.result;
-                db.close();
-                resolve(res || []);
-              };
-              getAllReq.onerror = () => {
-                db.close();
-                resolve([]);
-              };
-            } catch (err) {
-              db.close();
-              resolve([]);
-            }
-          };
-          req.onerror = () => resolve([]);
+          req.onsuccess = (e) => resolve(e.target.result);
+          req.onerror = () => resolve(null);
         });
       }
 
@@ -113,94 +90,136 @@ class ParticipantExtractor {
         return 'Not Available';
       }
 
-      // 1. Load contacts
-      const contacts = await getAllFromStore('model-storage', 'contact');
-      const contactById = new Map();
-      const exactNameMap = new Map();
-      const allPhoneContacts = [];
+      const db = await openDb('model-storage');
+      if (!db) {
+        return { storeParticipants: null, matchedSubject: null };
+      }
 
-      for (const c of contacts) {
-        let phone = c.phoneNumber || '';
-        if (!phone && c.id && (c.id.includes('@c.us') || c.id.includes('@s.whatsapp.net'))) {
-          phone = c.id;
+      try {
+        // 1. Get group-metadata (lightweight: ~10-50 groups)
+        const groups = await new Promise((resolve) => {
+          if (!db.objectStoreNames.contains('group-metadata')) return resolve([]);
+          try {
+            const tx = db.transaction('group-metadata', 'readonly');
+            const store = tx.objectStore('group-metadata');
+            const req = store.getAll();
+            req.onsuccess = () => resolve(req.result || []);
+            req.onerror = () => resolve([]);
+          } catch (e) { resolve([]); }
+        });
+
+        const normTitle = (title || '').trim().toLowerCase();
+        let matchedGroup = groups.find(g => {
+          if (!g || !g.subject) return false;
+          const s = g.subject.trim().toLowerCase();
+          return s === normTitle || normTitle.includes(s) || s.includes(normTitle);
+        });
+
+        // If no title provided or no match, fall back to the first available group
+        if (!matchedGroup && groups.length > 0 && !normTitle) {
+          matchedGroup = groups[0];
         }
 
-        const normalized = cleanPhone(phone);
-
-        if (c.id) contactById.set(c.id, { ...c, normalizedPhone: normalized });
-        if (c.id && c.id.includes('@c.us')) {
-          contactById.set(c.id.replace('@c.us', ''), { ...c, normalizedPhone: normalized });
+        if (!matchedGroup) {
+          db.close();
+          return { storeParticipants: null, matchedSubject: null };
         }
 
-        if (normalized !== 'Not Available') {
-          if (c.name) exactNameMap.set(c.name.trim().toLowerCase(), normalized);
-          if (c.shortName) exactNameMap.set(c.shortName.trim().toLowerCase(), normalized);
-          if (c.pushname) exactNameMap.set(c.pushname.trim().toLowerCase(), normalized);
+        // 2. Get participants for this specific group only
+        const groupParticipantsData = await new Promise((resolve) => {
+          if (!db.objectStoreNames.contains('participant')) return resolve(null);
+          try {
+            const tx = db.transaction('participant', 'readonly');
+            const store = tx.objectStore('participant');
+            const req = store.getAll();
+            req.onsuccess = () => {
+              const all = req.result || [];
+              const match = all.find(p => p && p.groupId === matchedGroup.id);
+              resolve(match || null);
+            };
+            req.onerror = () => resolve(null);
+          } catch (e) { resolve(null); }
+        });
 
-          allPhoneContacts.push({
-            name: (c.name || '').toLowerCase().trim(),
-            shortName: (c.shortName || '').toLowerCase().trim(),
-            pushname: (c.pushname || '').toLowerCase().trim(),
-            phone: normalized
+        if (!groupParticipantsData || !groupParticipantsData.participants || groupParticipantsData.participants.length === 0) {
+          db.close();
+          return { storeParticipants: null, matchedSubject: matchedGroup.subject };
+        }
+
+        const jids = groupParticipantsData.participants;
+        const admins = new Set(groupParticipantsData.admins || []);
+        const jidSet = new Set(jids);
+
+        // 3. Look up ONLY the contacts belonging to this group (avoid loading thousands of unrelated contacts)
+        const contactMap = new Map();
+        if (db.objectStoreNames.contains('contact')) {
+          await new Promise((resolve) => {
+            try {
+              const tx = db.transaction('contact', 'readonly');
+              const store = tx.objectStore('contact');
+              const req = store.openCursor();
+              req.onsuccess = (e) => {
+                const cursor = e.target.result;
+                if (cursor) {
+                  const val = cursor.value;
+                  if (val && val.id && (jidSet.has(val.id) || jidSet.has(val.id.replace('@c.us', '')))) {
+                    contactMap.set(val.id, {
+                      name: val.name || '',
+                      pushname: val.pushname || '',
+                      phoneNumber: val.phoneNumber || ''
+                    });
+                  }
+                  cursor.continue();
+                } else {
+                  resolve();
+                }
+              };
+              req.onerror = () => resolve();
+            } catch (e) { resolve(); }
           });
         }
-      }
 
-      // 2. Search group in group-metadata
-      const groups = await getAllFromStore('model-storage', 'group-metadata');
-      const normTitle = (title || '').trim().toLowerCase();
+        db.close();
 
-      const matchedGroup = groups.find(g => {
-        if (!g.subject) return false;
-        const s = g.subject.trim().toLowerCase();
-        return s === normTitle || normTitle.includes(s) || s.includes(normTitle);
-      });
-
-      let storeParticipants = null;
-
-      if (matchedGroup) {
-        const participantStores = await getAllFromStore('model-storage', 'participant');
-        const grpP = participantStores.find(p => p.groupId === matchedGroup.id);
-
-        if (grpP && grpP.participants && grpP.participants.length > 0) {
-          const admins = new Set(grpP.admins || []);
-          storeParticipants = [];
-
-          for (const jid of grpP.participants) {
-            const c = contactById.get(jid) || {};
-            let phone = c.normalizedPhone || cleanPhone(c.phoneNumber);
-            if (phone === 'Not Available' && jid.includes('@c.us')) {
-              phone = cleanPhone(jid);
-            }
-
-            const name = c.name || c.pushname || 'Unknown';
-            const status = c.name ? 'Saved' : (phone !== 'Not Available' ? 'Unsaved' : 'Unknown');
-            const extStatus = phone !== 'Not Available'
-              ? (c.name ? 'Extracted (Saved Contact)' : 'Extracted (Direct)')
-              : 'Unavailable (Hidden)';
-
-            storeParticipants.push({
-              jid,
-              primaryText: c.name || (phone !== 'Not Available' ? phone : 'Unknown'),
-              secondaryText: c.pushname ? `~${c.pushname}` : '',
-              titleAttr: name,
-              resolvedPhone: phone,
-              contactName: c.name || '',
-              pushname: c.pushname || '',
-              contactStatus: status,
-              extractionStatus: extStatus,
-              isAdmin: admins.has(jid)
-            });
+        // 4. Construct clean participant list (lightweight, under 20KB)
+        const storeParticipants = [];
+        for (const jid of jids) {
+          const c = contactMap.get(jid) || contactMap.get(jid.replace('@c.us', '')) || {};
+          let phone = cleanPhone(c.phoneNumber);
+          if (phone === 'Not Available' && jid.includes('@c.us')) {
+            phone = cleanPhone(jid);
           }
-        }
-      }
 
-      return {
-        matchedSubject: matchedGroup ? matchedGroup.subject : null,
-        storeParticipants,
-        exactNameMapEntries: Array.from(exactNameMap.entries()),
-        allPhoneContacts
-      };
+          const name = c.name || c.pushname || (phone !== 'Not Available' ? phone : 'Unknown');
+          const status = c.name ? 'Saved' : (phone !== 'Not Available' ? 'Unsaved' : 'Unknown');
+          const extStatus = phone !== 'Not Available'
+            ? (c.name ? 'Extracted (Saved Contact)' : 'Extracted (Direct)')
+            : 'Unavailable (Hidden)';
+
+          storeParticipants.push({
+            jid,
+            primaryText: name,
+            secondaryText: c.pushname ? `~${c.pushname}` : '',
+            titleAttr: name,
+            resolvedPhone: phone,
+            contactName: c.name || '',
+            pushname: c.pushname || '',
+            contactStatus: status,
+            extractionStatus: extStatus,
+            isAdmin: admins.has(jid)
+          });
+        }
+
+        return {
+          matchedSubject: matchedGroup.subject,
+          storeParticipants,
+          exactNameMapEntries: [],
+          allPhoneContacts: []
+        };
+      } catch (err) {
+        try { db.close(); } catch (e) {}
+        return { storeParticipants: null, matchedSubject: null };
+      }
     }, groupTitle);
   }
 

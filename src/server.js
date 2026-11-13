@@ -28,10 +28,15 @@ const browserController = new WhatsAppBrowser({
 let sseClients = [];
 let lastExtractedData = null;
 
-// SSE Progress Event Dispatcher
+// SSE Progress Event Dispatcher - Safe against client disconnects
 function broadcastProgress(data) {
-  sseClients.forEach(client => {
-    client.res.write(`data: ${JSON.stringify(data)}\n\n`);
+  sseClients = sseClients.filter(client => {
+    try {
+      client.res.write(`data: ${JSON.stringify(data)}\n\n`);
+      return true;
+    } catch (err) {
+      return false;
+    }
   });
 }
 

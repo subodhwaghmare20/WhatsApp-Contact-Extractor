@@ -53,8 +53,7 @@ class WhatsAppBrowser {
         '--disable-breakpad',
         '--disable-component-update',
         '--disable-sync',
-        '--mute-audio',
-        '--js-flags=--max-old-space-size=128'
+        '--mute-audio'
       ]
     });
 
