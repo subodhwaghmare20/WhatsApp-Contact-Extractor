@@ -27,5 +27,5 @@ VOLUME ["/app/whatsapp-session", "/app/exports"]
 # Expose web application port
 EXPOSE 3000
 
-# Start server with memory optimization for cloud containers
-CMD ["node", "--max-old-space-size=300", "src/server.js"]
+# Start server with memory optimization for 512MB cloud containers
+CMD ["node", "--max-old-space-size=128", "src/server.js"]

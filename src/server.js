@@ -35,6 +35,10 @@ function broadcastProgress(data) {
   });
 }
 
+// Health check for Render / cloud monitoring
+app.get('/health', (req, res) => res.status(200).send('OK'));
+app.get('/api/health', (req, res) => res.status(200).json({ status: 'ok' }));
+
 // 1. Connection Status API
 app.get('/api/status', async (req, res) => {
   try {
@@ -106,9 +110,13 @@ app.get('/api/groups', async (req, res) => {
 // 2. Launch Browser API
 app.post('/api/browser/start', async (req, res) => {
   try {
-    await browserController.openWhatsApp();
-    const statusInfo = await browserController.getStatus();
-    res.json({ success: true, ...statusInfo });
+    // Launch WhatsApp Web asynchronously in the background so the HTTP response returns immediately
+    // and never triggers a 502/504 gateway timeout on Render
+    browserController.openWhatsApp().catch(err => {
+      logger.error('Background WhatsApp launch error:', err.message);
+    });
+
+    res.json({ success: true, status: 'loading', details: 'WhatsApp Web is launching in cloud...' });
   } catch (err) {
     logger.error('Failed to launch browser:', err.message);
     res.status(500).json({ error: `Failed to launch WhatsApp browser: ${err.message}` });
@@ -230,8 +238,8 @@ process.on('SIGINT', async () => {
 });
 
 if (require.main === module) {
-  app.listen(PORT, () => {
-    logger.step('SERVER', `WhatsApp Extractor Dashboard running on http://localhost:${PORT}`);
+  app.listen(PORT, '0.0.0.0', () => {
+    logger.step('SERVER', `WhatsApp Extractor Dashboard running on http://0.0.0.0:${PORT}`);
   });
 }
 

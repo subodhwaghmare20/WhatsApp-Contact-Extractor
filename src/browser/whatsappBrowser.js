@@ -49,16 +49,27 @@ class WhatsAppBrowser {
         '--no-zygote',
         '--disable-gpu',
         '--disable-extensions',
-        '--disable-background-networking',
-        '--disable-default-apps',
+        '--disable-notifications',
+        '--disable-breakpad',
+        '--disable-component-update',
+        '--disable-sync',
         '--mute-audio',
-        '--js-flags=--max-old-space-size=256'
+        '--js-flags=--max-old-space-size=128'
       ]
     });
 
     const pages = this.context.pages();
     this.page = pages.length > 0 ? pages[0] : await this.context.newPage();
     this.isRunning = true;
+
+    // Block non-essential heavy resources (media, fonts) to conserve memory inside constrained 512MB cloud environments
+    await this.page.route('**/*', (route) => {
+      const type = route.request().resourceType();
+      if (['media', 'font'].includes(type)) {
+        return route.abort();
+      }
+      return route.continue();
+    });
 
     this.page.on('close', () => {
       logger.warn('WhatsApp browser tab closed.');
