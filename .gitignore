@@ -1,0 +1,9 @@
+node_modules/
+whatsapp-session/
+.env
+exports/*.xlsx
+!exports/.gitkeep
+*.log
+.DS_Store
+Thumbs.db
+

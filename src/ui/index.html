@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WhatsApp Group Contact Extractor</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="header-left">
+        <div class="logo-icon">📱</div>
+        <div>
+          <h1>WhatsApp Group Contact Extractor</h1>
+          <p class="subtitle">Automated participant extraction & Excel report generator</p>
+        </div>
+      </div>
+      <div class="header-right">
+        <div id="connectionBadge" class="status-badge badge-disconnected">
+          <span class="status-dot"></span>
+          <span id="connectionText">Checking Connection...</span>
+        </div>
+        <button id="btnToggleBrowser" class="btn btn-secondary">Launch Browser</button>
+      </div>
+    </header>
+
+    <!-- Main Grid -->
+    <main class="app-main">
+      <!-- Workflow Steps & Controls Card -->
+      <section class="card workflow-card">
+        <div class="card-header">
+          <h2>Workflow & Extraction Controls</h2>
+        </div>
+        <div class="card-body">
+          <ol class="step-list">
+            <li>
+              <strong>1. Open WhatsApp Web:</strong> Click <em>"Launch Browser"</em> above. Scan the QR code if required (session persists automatically).
+            </li>
+            <li>
+              <strong>2. Select Group:</strong> In the WhatsApp browser window, open the target WhatsApp group.
+            </li>
+            <li>
+              <strong>3. Extract:</strong> Click <em>"Start Extraction"</em> below. The extractor navigates the participant list and inspects saved profiles for phone numbers.
+            </li>
+            <li>
+              <strong>4. Export:</strong> Review the live preview table and click <em>"Export to Excel"</em>.
+            </li>
+          </ol>
+
+          <!-- Profile Inspection Option Toggle -->
+          <div class="options-bar">
+            <label class="checkbox-container">
+              <input type="checkbox" id="chkInspectProfiles" checked>
+              <span class="checkbox-custom"></span>
+              <span class="checkbox-text">
+                <strong>Inspect Saved Contact Profiles:</strong> Automatically view contact cards of saved contacts to find their phone numbers.
+              </span>
+            </label>
+          </div>
+
+          <!-- Target Group Selection (Enables 100% remote cloud extraction without desktop window) -->
+          <div class="group-select-bar">
+            <label for="groupSelect"><strong>Select WhatsApp Group:</strong></label>
+            <select id="groupSelect" class="group-select">
+              <option value="">-- Choose group from your account or auto-detect --</option>
+            </select>
+          </div>
+
+          <div class="action-bar">
+            <button id="btnStartExtract" class="btn btn-primary" disabled>
+              <span class="btn-icon">⚡</span> Start Extraction
+            </button>
+            <button id="btnExportExcel" class="btn btn-success" disabled>
+              <span class="btn-icon">📥</span> Export to Excel
+            </button>
+          </div>
+
+          <!-- Cloud / Remote QR Code Display -->
+          <div id="qrContainer" class="qr-container hidden">
+            <div class="qr-card">
+              <h3>Scan QR Code to Connect WhatsApp</h3>
+              <p>Open WhatsApp on your phone &bull; Settings &gt; Linked Devices &gt; Link a Device</p>
+              <div class="qr-image-wrapper">
+                <img id="qrImage" src="" alt="WhatsApp QR Code" />
+                <div id="qrLoading" class="qr-loading">Fetching QR code...</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Progress Box -->
+          <div id="progressContainer" class="progress-container hidden">
+            <div class="progress-bar-bg">
+              <div id="progressBar" class="progress-bar-fill"></div>
+            </div>
+            <div class="progress-details">
+              <span id="progressMessage">Initializing extraction...</span>
+              <span id="progressCounter">0 found</span>
+            </div>
+          </div>
+
+          <!-- Alert / Status Banner -->
+          <div id="statusBanner" class="status-banner hidden"></div>
+        </div>
+      </section>
+
+      <!-- Metrics Summary Cards -->
+      <section class="metrics-grid">
+        <div class="metric-card">
+          <div class="metric-title">Total Participants</div>
+          <div id="metricTotal" class="metric-value">0</div>
+          <div class="metric-sub">Detected members</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-title">Phone Numbers Found</div>
+          <div id="metricNumbers" class="metric-value text-success">0</div>
+          <div class="metric-sub">Ready for outreach</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-title">Numbers Unavailable</div>
+          <div id="metricUnavailable" class="metric-value text-muted">0</div>
+          <div class="metric-sub">Privacy-restricted / hidden</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-title">Active Group</div>
+          <div id="metricGroupName" class="metric-value text-primary font-md">None</div>
+          <div class="metric-sub">Current selection</div>
+        </div>
+      </section>
+
+      <!-- Data Preview Table Card -->
+      <section class="card table-card">
+        <div class="card-header table-header">
+          <div class="table-title-area">
+            <h2>Extracted Participants Preview</h2>
+            <span id="tableRecordCount" class="badge-count">0 records</span>
+          </div>
+          <div class="table-filter-area">
+            <input type="text" id="searchInput" placeholder="Search by name or number..." class="search-input" />
+            <select id="statusFilter" class="select-filter">
+              <option value="all">All Statuses</option>
+              <option value="Saved">Saved Contacts</option>
+              <option value="Unsaved">Unsaved Numbers</option>
+              <option value="Extracted (Profile)">Profile Inspected</option>
+              <option value="Unknown">Unknown Status</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="data-table" id="participantsTable">
+              <thead>
+                <tr>
+                  <th style="width: 70px;">Sr. No.</th>
+                  <th>Participant Name</th>
+                  <th>Mobile Number</th>
+                  <th style="width: 130px;">Contact Status</th>
+                  <th style="width: 170px;">Extraction Status</th>
+                  <th style="width: 100px;">Role</th>
+                </tr>
+              </thead>
+              <tbody id="tableBody">
+                <tr class="empty-row">
+                  <td colspan="6">No participants extracted yet. Click "Start Extraction" to begin.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+      <p>&copy; 2026 QSpiders Coimbatore. All Rights Reserved. &bull; WhatsApp Group Contact Extractor</p>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

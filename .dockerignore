@@ -1,0 +1,8 @@
+node_modules/
+whatsapp-session/
+exports/*.xlsx
+!exports/.gitkeep
+*.log
+.git/
+.DS_Store
+

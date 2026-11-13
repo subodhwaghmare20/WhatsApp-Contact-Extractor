@@ -1,0 +1,28 @@
+{
+  "name": "whatsapp-group-contact-extractor",
+  "version": "1.0.0",
+  "description": "Browser automation tool to extract WhatsApp group participant names and mobile numbers to Excel",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node test/phase1-check.js && node test/test-dataprocessor.js && node test/test-excel.js && node test/test-error-handling.js",
+    "test:phase1": "node test/phase1-check.js",
+    "test:data": "node test/test-dataprocessor.js",
+    "test:excel": "node test/test-excel.js",
+    "test:errors": "node test/test-error-handling.js"
+  },
+  "keywords": [
+    "whatsapp",
+    "playwright",
+    "exceljs",
+    "contact-extractor",
+    "automation"
+  ],
+  "author": "QSpiders Coimbatore",
+  "license": "MIT",
+  "dependencies": {
+    "exceljs": "^4.4.0",
+    "express": "^4.21.2",
+    "playwright": "^1.51.0"
+  }
+}

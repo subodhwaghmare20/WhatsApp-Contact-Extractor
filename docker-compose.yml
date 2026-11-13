@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  whatsapp-extractor:
+    build: .
+    container_name: whatsapp-contact-extractor
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - HEADLESS=true
+      - NODE_ENV=production
+    volumes:
+      # Persistent session storage (keeps your QR scan saved across container restarts)
+      - whatsapp_session:/app/whatsapp-session
+      # Persistent exported excel files
+      - whatsapp_exports:/app/exports
+
+volumes:
+  whatsapp_session:
+    name: whatsapp_session_data
+  whatsapp_exports:
+    name: whatsapp_exports_data
+
