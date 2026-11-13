@@ -46,21 +46,38 @@ const groupSelect = document.getElementById('groupSelect');
 let statusInterval = null;
 let groupsLoaded = false;
 
+// Safe Fetch helper that handles non-JSON / HTML error pages (e.g. 502 Bad Gateway / Render cold start)
+async function safeFetchJson(url, options = {}) {
+  const res = await fetch(url, options);
+  const text = await res.text();
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch (err) {
+    if (!res.ok) {
+      throw new Error(`Cloud server is waking up or restarting (HTTP ${res.status}). Please try again in a few moments.`);
+    }
+    throw new Error('Server returned an unexpected response. Please refresh.');
+  }
+  if (!res.ok) {
+    throw new Error(data.error || `Server error (${res.status})`);
+  }
+  return data;
+}
+
 async function checkStatus() {
   try {
-    const res = await fetch('/api/status');
-    const data = await res.json();
+    const data = await safeFetchJson('/api/status');
     updateConnectionUI(data.status, data.details);
   } catch (err) {
-    updateConnectionUI('disconnected', 'Server unreachable');
+    updateConnectionUI('disconnected', err.message);
   }
 }
 
 async function fetchGroups() {
   if (groupsLoaded) return;
   try {
-    const res = await fetch('/api/groups');
-    const data = await res.json();
+    const data = await safeFetchJson('/api/groups');
     if (data.groups && data.groups.length > 0 && groupSelect) {
       groupSelect.innerHTML = '<option value="">-- Choose group from your account or auto-detect --</option>' +
         data.groups.map(g => `<option value="${escapeHtml(g.subject)}">${escapeHtml(g.subject)}</option>`).join('');
@@ -71,14 +88,19 @@ async function fetchGroups() {
 
 async function fetchQrCode() {
   try {
-    const res = await fetch('/api/qr');
-    const data = await res.json();
-    if (data.qr) {
+    const data = await safeFetchJson('/api/qr');
+    if (data && data.qr) {
       qrImage.src = data.qr;
       qrImage.style.display = 'block';
       qrLoading.style.display = 'none';
+    } else {
+      qrImage.style.display = 'none';
+      qrLoading.style.display = 'block';
+      qrLoading.textContent = 'Generating WhatsApp QR code in cloud...';
     }
-  } catch (err) {}
+  } catch (err) {
+    qrLoading.textContent = 'Connecting to WhatsApp Web in cloud...';
+  }
 }
 
 function updateConnectionUI(status, details) {
@@ -94,7 +116,7 @@ function updateConnectionUI(status, details) {
     fetchGroups();
   } else if (status === 'qr_required') {
     connectionBadge.classList.add('badge-qr');
-    connectionText.textContent = 'Scan QR Code';
+    connectionText.textContent = 'Scan QR Code Below';
     btnToggleBrowser.textContent = 'Close Browser';
     btnStartExtract.disabled = true;
     groupsLoaded = false;
@@ -107,7 +129,12 @@ function updateConnectionUI(status, details) {
     connectionText.textContent = 'WhatsApp Loading...';
     btnToggleBrowser.textContent = 'Close Browser';
     btnStartExtract.disabled = true;
-    if (qrContainer) qrContainer.classList.add('hidden');
+    if (qrContainer) {
+      qrContainer.classList.remove('hidden');
+      qrImage.style.display = 'none';
+      qrLoading.style.display = 'block';
+      qrLoading.textContent = 'WhatsApp Web is loading in cloud... QR code will appear here shortly';
+    }
   } else {
     connectionBadge.classList.add('badge-disconnected');
     connectionText.textContent = 'Disconnected';
@@ -133,17 +160,25 @@ btnToggleBrowser.addEventListener('click', async () => {
   btnToggleBrowser.disabled = true;
   try {
     if (state.connectionStatus === 'disconnected') {
-      showBanner('Launching WhatsApp Web browser...', 'info');
-      const res = await fetch('/api/browser/start', { method: 'POST' });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to launch browser');
-      showBanner('Browser opened. Please scan QR code or select your group.', 'info');
+      showBanner('Opening cloud WhatsApp browser... QR code will appear below in 10-15s.', 'info');
+      if (qrContainer) {
+        qrContainer.classList.remove('hidden');
+        qrImage.style.display = 'none';
+        qrLoading.style.display = 'block';
+        qrLoading.textContent = 'Launching cloud browser... Fetching QR code...';
+      }
+      const data = await safeFetchJson('/api/browser/start', { method: 'POST' });
+      showBanner('Cloud browser ready. Please scan the QR code below with WhatsApp on your phone!', 'info');
+      await checkStatus();
+      if (data.status === 'qr_required' || data.status === 'loading') {
+        fetchQrCode();
+      }
     } else {
-      showBanner('Closing browser session...', 'info');
-      await fetch('/api/browser/close', { method: 'POST' });
+      showBanner('Closing cloud browser session...', 'info');
+      await safeFetchJson('/api/browser/close', { method: 'POST' });
       showBanner('Browser closed.', 'info');
+      await checkStatus();
     }
-    await checkStatus();
   } catch (err) {
     showBanner(err.message, 'error');
   } finally {
@@ -189,7 +224,7 @@ btnStartExtract.addEventListener('click', async () => {
   };
 
   try {
-    const res = await fetch('/api/extract', {
+    const result = await safeFetchJson('/api/extract', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -197,11 +232,6 @@ btnStartExtract.addEventListener('click', async () => {
         groupTitle: selectedGroup
       })
     });
-    const result = await res.json();
-
-    if (!res.ok) {
-      throw new Error(result.error || 'Extraction failed');
-    }
 
     eventSource.close();
     progressBar.style.width = '100%';
@@ -313,7 +343,7 @@ btnExportExcel.addEventListener('click', async () => {
   showBanner('Generating formatted Excel file...', 'info');
 
   try {
-    const res = await fetch('/api/export', {
+    const data = await safeFetchJson('/api/export', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -321,9 +351,6 @@ btnExportExcel.addEventListener('click', async () => {
         participants: state.participants
       })
     });
-
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Export failed');
 
     window.location.href = `/api/download/${encodeURIComponent(data.fileName)}`;
     showBanner(`Excel file "${data.fileName}" generated and downloaded!`, 'success');

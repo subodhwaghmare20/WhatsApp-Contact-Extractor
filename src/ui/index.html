@@ -34,18 +34,26 @@
           <h2>Workflow & Extraction Controls</h2>
         </div>
         <div class="card-body">
+          <!-- Cloud Info Notice -->
+          <div class="cloud-info-box">
+            <span class="info-icon">☁️</span>
+            <div>
+              <strong>100% Cloud Hosted:</strong> The WhatsApp browser runs securely in the background on Render. <em>No browser window will pop up on your laptop.</em> Everything is managed directly from this web page!
+            </div>
+          </div>
+
           <ol class="step-list">
             <li>
-              <strong>1. Open WhatsApp Web:</strong> Click <em>"Launch Browser"</em> above. Scan the QR code if required (session persists automatically).
+              <strong>1. Open Cloud WhatsApp:</strong> Click <em>"Launch Browser"</em>. The QR code will load in the box below.
             </li>
             <li>
-              <strong>2. Select Group:</strong> In the WhatsApp browser window, open the target WhatsApp group.
+              <strong>2. Scan with Phone:</strong> In WhatsApp on your mobile phone, tap <em>Settings &gt; Linked Devices &gt; Link a Device</em> and scan the QR code.
             </li>
             <li>
-              <strong>3. Extract:</strong> Click <em>"Start Extraction"</em> below. The extractor navigates the participant list and inspects saved profiles for phone numbers.
+              <strong>3. Select Group:</strong> Once connected, choose your group from the <em>"Select WhatsApp Group"</em> dropdown below.
             </li>
             <li>
-              <strong>4. Export:</strong> Review the live preview table and click <em>"Export to Excel"</em>.
+              <strong>4. Extract &amp; Export:</strong> Click <em>"Start Extraction"</em> and then <em>"Export to Excel"</em>.
             </li>
           </ol>
 
@@ -83,8 +91,8 @@
               <h3>Scan QR Code to Connect WhatsApp</h3>
               <p>Open WhatsApp on your phone &bull; Settings &gt; Linked Devices &gt; Link a Device</p>
               <div class="qr-image-wrapper">
-                <img id="qrImage" src="" alt="WhatsApp QR Code" />
-                <div id="qrLoading" class="qr-loading">Fetching QR code...</div>
+                <img id="qrImage" src="" alt="WhatsApp QR Code" style="display: none;" />
+                <div id="qrLoading" class="qr-loading">Connecting to WhatsApp Web in cloud... QR code will appear here</div>
               </div>
             </div>
           </div>

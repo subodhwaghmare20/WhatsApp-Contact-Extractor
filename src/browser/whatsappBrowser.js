@@ -47,7 +47,12 @@ class WhatsAppBrowser {
         '--disable-accelerated-2d-canvas',
         '--no-first-run',
         '--no-zygote',
-        '--disable-gpu'
+        '--disable-gpu',
+        '--disable-extensions',
+        '--disable-background-networking',
+        '--disable-default-apps',
+        '--mute-audio',
+        '--js-flags=--max-old-space-size=256'
       ]
     });
 
@@ -85,6 +90,16 @@ class WhatsAppBrowser {
         waitUntil: 'domcontentloaded',
         timeout: 60000
       });
+    }
+
+    // Proactively wait up to 15 seconds for either QR canvas or authenticated chat pane
+    try {
+      await Promise.race([
+        this.page.waitForSelector('canvas, [data-ref], [data-testid="qrcode"]', { timeout: 15000 }),
+        this.page.waitForSelector('#pane-side, [data-testid="chat-list"]', { timeout: 15000 })
+      ]);
+    } catch (e) {
+      // Timeout is harmless; background polling will continue
     }
 
     return this.page;
@@ -153,7 +168,14 @@ class WhatsAppBrowser {
     }
 
     try {
-      const qrEl = await this.page.$('canvas[aria-label*="QR"], canvas, [data-testid="qrcode"]');
+      // Auto-click reload button if the QR code expired
+      const reloadBtn = await this.page.$('[data-testid="qrcode"] button, [data-testid="qrcode"] [role="button"], span[data-icon="refresh"]');
+      if (reloadBtn) {
+        await reloadBtn.click().catch(() => {});
+        await this.page.waitForTimeout(1000);
+      }
+
+      const qrEl = await this.page.$('canvas[aria-label*="QR"], canvas[aria-label*="device"], canvas, [data-testid="qrcode"]');
       if (qrEl) {
         const buffer = await qrEl.screenshot();
         return `data:image/png;base64,${buffer.toString('base64')}`;
