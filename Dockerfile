@@ -1,4 +1,4 @@
-# Official Microsoft Playwright Image matching installed Playwright version
+# Official Microsoft Playwright Image with Node.js & Chromium pre-installed
 FROM mcr.microsoft.com/playwright:v1.65.0-noble
 
 # Set working directory
@@ -12,8 +12,8 @@ ENV HEADLESS=true
 # Copy package descriptors
 COPY package*.json ./
 
-# Install dependencies and ensure matching Chromium binary is present
-RUN npm ci --omit=dev && npx playwright install chromium
+# Install production dependencies
+RUN npm install --omit=dev
 
 # Copy application source code
 COPY . .
