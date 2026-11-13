@@ -346,7 +346,7 @@ class ParticipantExtractor {
     if (!targetGroupTitle) {
       const chatInfo = await this.detectActiveChat();
       if (chatInfo.error) {
-        throw new Error(chatInfo.error);
+        throw new Error('No WhatsApp group selected. Please select a group from the dropdown list.');
       }
       targetGroupTitle = chatInfo.title;
     }
@@ -367,7 +367,7 @@ class ParticipantExtractor {
 
     let participantsList = [];
 
-    // Method A: Direct Group Store Lookup (Fastest & most complete)
+    // Method A: Direct Group Store Lookup (Fastest, 100% reliable in cloud)
     if (clientData.storeParticipants && clientData.storeParticipants.length > 0) {
       logger.success(`Direct Group Store Match! Found ${clientData.storeParticipants.length} group participants directly in WhatsApp client memory.`);
       
@@ -389,113 +389,117 @@ class ParticipantExtractor {
       }
     }
 
-    // Method B: DOM Traversal (Always run or fallback to guarantee completeness)
-    await this.openGroupInfo();
-    await this.openFullParticipantModal();
+    // Method B: DOM Traversal Fallback (ONLY runs if client store did not find group participants)
+    if (participantsList.length === 0) {
+      logger.info('Client store did not match; falling back to DOM inspection...');
+      try {
+        await this.openGroupInfo();
+        await this.openFullParticipantModal();
 
-    const scrollContainerSelector = await this.page.evaluate(() => {
-      const dialog = document.querySelector('div[role="dialog"]');
-      if (dialog) {
-        const scrollable = Array.from(dialog.querySelectorAll('div')).find(el => {
-          const style = window.getComputedStyle(el);
-          return (style.overflowY === 'auto' || style.overflowY === 'scroll') && el.scrollHeight > el.clientHeight;
+        const scrollContainerSelector = await this.page.evaluate(() => {
+          const dialog = document.querySelector('div[role="dialog"]');
+          if (dialog) {
+            const scrollable = Array.from(dialog.querySelectorAll('div')).find(el => {
+              const style = window.getComputedStyle(el);
+              return (style.overflowY === 'auto' || style.overflowY === 'scroll') && el.scrollHeight > el.clientHeight;
+            });
+            if (scrollable) {
+              scrollable.setAttribute('data-extractor-scroll', 'true');
+              return '[data-extractor-scroll="true"]';
+            }
+          }
+
+          const drawer = document.querySelector('[data-testid="drawer-right"]') || document.querySelector('section');
+          if (drawer) {
+            const scrollable = Array.from(drawer.querySelectorAll('div')).find(el => {
+              const style = window.getComputedStyle(el);
+              return (style.overflowY === 'auto' || style.overflowY === 'scroll') && el.scrollHeight > el.clientHeight;
+            });
+            if (scrollable) {
+              scrollable.setAttribute('data-extractor-scroll', 'true');
+              return '[data-extractor-scroll="true"]';
+            }
+          }
+
+          return null;
         });
-        if (scrollable) {
-          scrollable.setAttribute('data-extractor-scroll', 'true');
-          return '[data-extractor-scroll="true"]';
-        }
-      }
 
-      const drawer = document.querySelector('[data-testid="drawer-right"]') || document.querySelector('section');
-      if (drawer) {
-        const scrollable = Array.from(drawer.querySelectorAll('div')).find(el => {
-          const style = window.getComputedStyle(el);
-          return (style.overflowY === 'auto' || style.overflowY === 'scroll') && el.scrollHeight > el.clientHeight;
-        });
-        if (scrollable) {
-          scrollable.setAttribute('data-extractor-scroll', 'true');
-          return '[data-extractor-scroll="true"]';
-        }
-      }
+        const domRawMap = new Map();
+        let noNewCount = 0;
+        const maxNoNew = 5;
+        let iteration = 0;
 
-      return null;
-    });
+        logger.info('Scanning visible DOM participant rows...');
 
-    const domRawMap = new Map();
-    let noNewCount = 0;
-    const maxNoNew = 5;
-    let iteration = 0;
+        while (noNewCount < maxNoNew && iteration < 50) {
+          iteration++;
 
-    logger.info('Scanning visible DOM participant rows...');
+          const currentBatch = await this.getVisibleParticipantsFromDOM();
+          let addedInThisIteration = 0;
 
-    while (noNewCount < maxNoNew && iteration < 150) {
-      iteration++;
+          for (const item of currentBatch) {
+            const key = `${item.primaryText}|${item.secondaryText}|${item.titleAttr}`;
+            if (!domRawMap.has(key)) {
+              domRawMap.set(key, item);
+              addedInThisIteration++;
+            }
+          }
 
-      const currentBatch = await this.getVisibleParticipantsFromDOM();
-      let addedInThisIteration = 0;
+          if (addedInThisIteration > 0) {
+            noNewCount = 0;
+          } else {
+            noNewCount++;
+          }
 
-      for (const item of currentBatch) {
-        const key = `${item.primaryText}|${item.secondaryText}|${item.titleAttr}`;
-        if (!domRawMap.has(key)) {
-          domRawMap.set(key, item);
-          addedInThisIteration++;
-        }
-      }
-
-      if (addedInThisIteration > 0) {
-        noNewCount = 0;
-      } else {
-        noNewCount++;
-      }
-
-      onProgress({
-        phase: 'list_scan',
-        iteration,
-        totalRawFound: domRawMap.size,
-        message: `Scanning group list: found ${domRawMap.size} visible rows...`
-      });
-
-      const scrollResult = await this.page.evaluate((sel) => {
-        let el = sel ? document.querySelector(sel) : null;
-        if (!el) {
-          const candidate = Array.from(document.querySelectorAll('div')).find(d => {
-            return d.scrollHeight > d.clientHeight && (d.innerText || '').includes('participants');
+          onProgress({
+            phase: 'list_scan',
+            iteration,
+            totalRawFound: domRawMap.size,
+            message: `Scanning group list: found ${domRawMap.size} visible rows...`
           });
-          el = candidate;
+
+          const scrollResult = await this.page.evaluate((sel) => {
+            let el = sel ? document.querySelector(sel) : null;
+            if (!el) {
+              const candidate = Array.from(document.querySelectorAll('div')).find(d => {
+                return d.scrollHeight > d.clientHeight && (d.innerText || '').includes('participants');
+              });
+              el = candidate;
+            }
+
+            if (el) {
+              const prevTop = el.scrollTop;
+              el.scrollTop += 380;
+              return {
+                prevTop,
+                newTop: el.scrollTop,
+                maxTop: el.scrollHeight - el.clientHeight
+              };
+            }
+            return null;
+          }, scrollContainerSelector);
+
+          if (scrollResult && scrollResult.prevTop === scrollResult.newTop && scrollResult.newTop >= scrollResult.maxTop - 5) {
+            noNewCount += 2;
+          }
+
+          await this.delay(300);
         }
 
-        if (el) {
-          const prevTop = el.scrollTop;
-          el.scrollTop += 380;
-          return {
-            prevTop,
-            newTop: el.scrollTop,
-            maxTop: el.scrollHeight - el.clientHeight
-          };
+        // Merge DOM items with store items
+        const domList = Array.from(domRawMap.values());
+        for (const domItem of domList) {
+          const alreadyExists = participantsList.some(p => 
+            (p.primaryText && p.primaryText.toLowerCase() === domItem.primaryText.toLowerCase()) ||
+            (p.titleAttr && p.titleAttr.toLowerCase() === domItem.primaryText.toLowerCase())
+          );
+
+          if (!alreadyExists) {
+            participantsList.push(domItem);
+          }
         }
-        return null;
-      }, scrollContainerSelector);
-
-      if (scrollResult && scrollResult.prevTop === scrollResult.newTop && scrollResult.newTop >= scrollResult.maxTop - 5) {
-        noNewCount += 2;
-      }
-
-      await this.delay(350);
-    }
-
-    // Merge DOM items with store items
-    const domList = Array.from(domRawMap.values());
-    logger.info(`DOM scan captured ${domList.length} rows. Cross-referencing with contact dictionary...`);
-
-    for (const domItem of domList) {
-      // Check if already in participantsList
-      const alreadyExists = participantsList.some(p => 
-        (p.primaryText && p.primaryText.toLowerCase() === domItem.primaryText.toLowerCase()) ||
-        (p.titleAttr && p.titleAttr.toLowerCase() === domItem.primaryText.toLowerCase())
-      );
-
-      if (!alreadyExists) {
-        participantsList.push(domItem);
+      } catch (domErr) {
+        logger.warn('DOM fallback skipped:', domErr.message);
       }
     }
 

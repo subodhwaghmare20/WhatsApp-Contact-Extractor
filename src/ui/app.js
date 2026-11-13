@@ -191,17 +191,23 @@ btnToggleBrowser.addEventListener('click', async () => {
 btnStartExtract.addEventListener('click', async () => {
   if (state.isExtracting) return;
 
+  const selectedGroup = groupSelect ? groupSelect.value.trim() : '';
+  if (!selectedGroup) {
+    showBanner('Please select a WhatsApp group from the "Select WhatsApp Group" dropdown first.', 'error');
+    if (groupSelect) groupSelect.focus();
+    return;
+  }
+
   state.isExtracting = true;
   btnStartExtract.disabled = true;
   btnExportExcel.disabled = true;
   progressContainer.classList.remove('hidden');
   progressBar.style.width = '10%';
-  progressMessage.textContent = 'Connecting to active group in WhatsApp Web...';
+  progressMessage.textContent = `Connecting to "${selectedGroup}" in WhatsApp Web...`;
   progressCounter.textContent = '0 found';
   hideBanner();
 
   const inspectProfiles = chkInspectProfiles ? chkInspectProfiles.checked : true;
-  const selectedGroup = groupSelect ? groupSelect.value : '';
 
   // Listen to SSE progress stream
   const eventSource = new EventSource('/api/extract/events');
