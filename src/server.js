@@ -17,32 +17,21 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'ui')));
 
-// Global state - Determine headless mode (headless in Linux/Docker/Cloud, or when HEADLESS=true / NODE_ENV=production)
-const isHeadless = process.env.HEADLESS === 'true' || process.env.NODE_ENV === 'production' || (process.platform === 'linux' && !process.env.DISPLAY);
-
+// Global state
 const browserController = new WhatsAppBrowser({
-  headless: isHeadless,
+  headless: false,
   sessionPath: path.resolve(__dirname, '../whatsapp-session')
 });
 
 let sseClients = [];
 let lastExtractedData = null;
 
-// SSE Progress Event Dispatcher - Safe against client disconnects
+// SSE Progress Event Dispatcher
 function broadcastProgress(data) {
-  sseClients = sseClients.filter(client => {
-    try {
-      client.res.write(`data: ${JSON.stringify(data)}\n\n`);
-      return true;
-    } catch (err) {
-      return false;
-    }
+  sseClients.forEach(client => {
+    client.res.write(`data: ${JSON.stringify(data)}\n\n`);
   });
 }
-
-// Health check for Render / cloud monitoring
-app.get('/health', (req, res) => res.status(200).send('OK'));
-app.get('/api/health', (req, res) => res.status(200).json({ status: 'ok' }));
 
 // 1. Connection Status API
 app.get('/api/status', async (req, res) => {
@@ -54,74 +43,12 @@ app.get('/api/status', async (req, res) => {
   }
 });
 
-// 1b. Remote QR Code API (Enables cloud / VPS QR scanning directly from dashboard)
-app.get('/api/qr', async (req, res) => {
-  try {
-    const qrImage = await browserController.getQrCodeDataUrl();
-    res.json({ qr: qrImage });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// 1c. Available Groups API (For remote cloud selection without desktop UI)
-app.get('/api/groups', async (req, res) => {
-  try {
-    const page = browserController.page;
-    if (!page || page.isClosed()) {
-      return res.json({ groups: [] });
-    }
-
-    const groups = await page.evaluate(async () => {
-      function getAllFromStore(dbName, storeName) {
-        return new Promise((resolve) => {
-          if (!window.indexedDB) return resolve([]);
-          const req = window.indexedDB.open(dbName);
-          req.onsuccess = (e) => {
-            const db = e.target.result;
-            if (!db.objectStoreNames.contains(storeName)) {
-              db.close();
-              return resolve([]);
-            }
-            try {
-              const tx = db.transaction(storeName, 'readonly');
-              const store = tx.objectStore(storeName);
-              const getAllReq = store.getAll();
-              getAllReq.onsuccess = () => {
-                const res = getAllReq.result;
-                db.close();
-                resolve(res || []);
-              };
-              getAllReq.onerror = () => { db.close(); resolve([]); };
-            } catch (err) { db.close(); resolve([]); }
-          };
-          req.onerror = () => resolve([]);
-        });
-      }
-
-      const allGroups = await getAllFromStore('model-storage', 'group-metadata');
-      return allGroups
-        .filter(g => Boolean(g.subject))
-        .map(g => ({ id: g.id, subject: g.subject }))
-        .sort((a, b) => a.subject.localeCompare(b.subject));
-    });
-
-    res.json({ groups });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 // 2. Launch Browser API
 app.post('/api/browser/start', async (req, res) => {
   try {
-    // Launch WhatsApp Web asynchronously in the background so the HTTP response returns immediately
-    // and never triggers a 502/504 gateway timeout on Render
-    browserController.openWhatsApp().catch(err => {
-      logger.error('Background WhatsApp launch error:', err.message);
-    });
-
-    res.json({ success: true, status: 'loading', details: 'WhatsApp Web is launching in cloud...' });
+    await browserController.openWhatsApp();
+    const statusInfo = await browserController.getStatus();
+    res.json({ success: true, ...statusInfo });
   } catch (err) {
     logger.error('Failed to launch browser:', err.message);
     res.status(500).json({ error: `Failed to launch WhatsApp browser: ${err.message}` });
@@ -243,8 +170,8 @@ process.on('SIGINT', async () => {
 });
 
 if (require.main === module) {
-  app.listen(PORT, '0.0.0.0', () => {
-    logger.step('SERVER', `WhatsApp Extractor Dashboard running on http://0.0.0.0:${PORT}`);
+  app.listen(PORT, () => {
+    logger.step('SERVER', `WhatsApp Extractor Dashboard running on http://localhost:${PORT}`);
   });
 }
 

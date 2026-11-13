@@ -201,26 +201,6 @@ body {
   padding: 0 !important;
 }
 
-/* Cloud Info Notice */
-.cloud-info-box {
-  background: #f0f9ff;
-  border: 1px solid #bae6fd;
-  border-radius: 8px;
-  padding: 12px 16px;
-  margin-bottom: 20px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 13px;
-  color: #0369a1;
-  line-height: 1.5;
-}
-
-.cloud-info-box .info-icon {
-  font-size: 24px;
-  flex-shrink: 0;
-}
-
 /* Workflow Step List */
 .step-list {
   display: grid;
@@ -241,40 +221,11 @@ body {
 
 /* Options Bar */
 .options-bar {
-  margin-bottom: 16px;
+  margin-bottom: 20px;
   padding: 12px 16px;
   background: #f0fdf4;
   border: 1px solid #bbf7d0;
   border-radius: 8px;
-}
-
-.group-select-bar {
-  margin-bottom: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.group-select-bar label {
-  font-size: 13px;
-  font-weight: 600;
-  color: #334155;
-}
-
-.group-select {
-  padding: 10px 14px;
-  font-size: 14px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: #ffffff;
-  color: #0f172a;
-  cursor: pointer;
-  outline: none;
-  transition: border-color 0.2s ease;
-}
-
-.group-select:focus {
-  border-color: var(--primary);
 }
 
 .checkbox-container {
@@ -534,59 +485,4 @@ body {
   font-size: 12px;
   color: var(--text-muted);
   margin-top: 12px;
-}
-
-/* Remote Cloud QR Code Modal / Card */
-.qr-container {
-  margin-top: 20px;
-  display: flex;
-  justify-content: center;
-}
-
-.qr-card {
-  background: #ffffff;
-  border: 2px dashed #0284c7;
-  border-radius: 12px;
-  padding: 24px;
-  text-align: center;
-  box-shadow: 0 4px 12px rgba(2, 132, 199, 0.1);
-  max-width: 360px;
-  width: 100%;
-}
-
-.qr-card h3 {
-  font-size: 16px;
-  font-weight: 700;
-  color: #0f172a;
-  margin-bottom: 6px;
-}
-
-.qr-card p {
-  font-size: 12px;
-  color: var(--text-muted);
-  margin-bottom: 16px;
-}
-
-.qr-image-wrapper {
-  width: 240px;
-  height: 240px;
-  margin: 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #f8fafc;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.qr-image-wrapper img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-
-.qr-loading {
-  font-size: 13px;
-  color: var(--text-muted);
 }

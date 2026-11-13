@@ -112,27 +112,6 @@ http://localhost:3000
 
 ---
 
-## 🌐 Online & Cloud Hosting (Docker / VPS)
-
-The application includes headless cloud support:
-- **Remote QR Code Streaming:** Displays the QR code directly on your web dashboard so you can scan it from your phone without needing a desktop display.
-- **Remote Group Selection:** Select any group in your account directly from the web dropdown selector.
-- **Docker Ready:** Built with the official Microsoft Playwright image (`mcr.microsoft.com/playwright:v1.51.0-noble`).
-
-### Quick Deploy with Docker Compose
-```bash
-# 1. Build and start the container
-docker compose up -d --build
-
-# 2. View logs
-docker compose logs -f
-
-# 3. Open dashboard
-http://YOUR_SERVER_IP:3000
-```
-
----
-
 ## 📄 Copyright & Ownership
 
 **Copyright &copy; 2026 QSpiders Coimbatore. All Rights Reserved.**

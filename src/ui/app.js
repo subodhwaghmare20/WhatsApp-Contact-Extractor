@@ -38,68 +38,15 @@ const statusFilter = document.getElementById('statusFilter');
 const tableBody = document.getElementById('tableBody');
 const tableRecordCount = document.getElementById('tableRecordCount');
 
-const qrContainer = document.getElementById('qrContainer');
-const qrImage = document.getElementById('qrImage');
-const qrLoading = document.getElementById('qrLoading');
-const groupSelect = document.getElementById('groupSelect');
-
 let statusInterval = null;
-let groupsLoaded = false;
-
-// Safe Fetch helper that handles non-JSON / HTML error pages (e.g. 502 Bad Gateway / Render cold start)
-async function safeFetchJson(url, options = {}) {
-  const res = await fetch(url, options);
-  const text = await res.text();
-  let data;
-  try {
-    data = JSON.parse(text);
-  } catch (err) {
-    if (!res.ok) {
-      throw new Error(`Cloud server is waking up or restarting (HTTP ${res.status}). Please try again in a few moments.`);
-    }
-    throw new Error('Server returned an unexpected response. Please refresh.');
-  }
-  if (!res.ok) {
-    throw new Error(data.error || `Server error (${res.status})`);
-  }
-  return data;
-}
 
 async function checkStatus() {
   try {
-    const data = await safeFetchJson('/api/status');
+    const res = await fetch('/api/status');
+    const data = await res.json();
     updateConnectionUI(data.status, data.details);
   } catch (err) {
-    updateConnectionUI('disconnected', err.message);
-  }
-}
-
-async function fetchGroups() {
-  if (groupsLoaded) return;
-  try {
-    const data = await safeFetchJson('/api/groups');
-    if (data.groups && data.groups.length > 0 && groupSelect) {
-      groupSelect.innerHTML = '<option value="">-- Choose group from your account or auto-detect --</option>' +
-        data.groups.map(g => `<option value="${escapeHtml(g.subject)}">${escapeHtml(g.subject)}</option>`).join('');
-      groupsLoaded = true;
-    }
-  } catch (err) {}
-}
-
-async function fetchQrCode() {
-  try {
-    const data = await safeFetchJson('/api/qr');
-    if (data && data.qr) {
-      qrImage.src = data.qr;
-      qrImage.style.display = 'block';
-      qrLoading.style.display = 'none';
-    } else {
-      qrImage.style.display = 'none';
-      qrLoading.style.display = 'block';
-      qrLoading.textContent = 'Generating WhatsApp QR code in cloud...';
-    }
-  } catch (err) {
-    qrLoading.textContent = 'Connecting to WhatsApp Web in cloud...';
+    updateConnectionUI('disconnected', 'Server unreachable');
   }
 }
 
@@ -112,37 +59,21 @@ function updateConnectionUI(status, details) {
     connectionText.textContent = 'WhatsApp Connected';
     btnToggleBrowser.textContent = 'Close Browser';
     btnStartExtract.disabled = state.isExtracting;
-    if (qrContainer) qrContainer.classList.add('hidden');
-    showBanner('WhatsApp connected successfully! Select your group below and click "Start Extraction".', 'success');
-    fetchGroups();
   } else if (status === 'qr_required') {
     connectionBadge.classList.add('badge-qr');
-    connectionText.textContent = 'Scan QR Code Below';
+    connectionText.textContent = 'Scan QR Code';
     btnToggleBrowser.textContent = 'Close Browser';
     btnStartExtract.disabled = true;
-    groupsLoaded = false;
-    if (qrContainer) {
-      qrContainer.classList.remove('hidden');
-      fetchQrCode();
-    }
   } else if (status === 'loading') {
     connectionBadge.classList.add('badge-qr');
-    connectionText.textContent = 'Syncing WhatsApp...';
+    connectionText.textContent = 'WhatsApp Loading...';
     btnToggleBrowser.textContent = 'Close Browser';
     btnStartExtract.disabled = true;
-    if (qrContainer) {
-      qrContainer.classList.remove('hidden');
-      qrImage.style.display = 'none';
-      qrLoading.style.display = 'block';
-      qrLoading.textContent = details || 'Pairing with phone and syncing WhatsApp... Please wait a moment.';
-    }
   } else {
     connectionBadge.classList.add('badge-disconnected');
     connectionText.textContent = 'Disconnected';
     btnToggleBrowser.textContent = 'Launch Browser';
     btnStartExtract.disabled = true;
-    groupsLoaded = false;
-    if (qrContainer) qrContainer.classList.add('hidden');
   }
 }
 
@@ -161,25 +92,17 @@ btnToggleBrowser.addEventListener('click', async () => {
   btnToggleBrowser.disabled = true;
   try {
     if (state.connectionStatus === 'disconnected') {
-      showBanner('Opening cloud WhatsApp browser... QR code will appear below in 10-15s.', 'info');
-      if (qrContainer) {
-        qrContainer.classList.remove('hidden');
-        qrImage.style.display = 'none';
-        qrLoading.style.display = 'block';
-        qrLoading.textContent = 'Launching cloud browser... Fetching QR code...';
-      }
-      const data = await safeFetchJson('/api/browser/start', { method: 'POST' });
-      showBanner('Cloud browser ready. Please scan the QR code below with WhatsApp on your phone!', 'info');
-      await checkStatus();
-      if (data.status === 'qr_required' || data.status === 'loading') {
-        fetchQrCode();
-      }
+      showBanner('Launching WhatsApp Web browser...', 'info');
+      const res = await fetch('/api/browser/start', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to launch browser');
+      showBanner('Browser opened. Please scan QR code or select your group.', 'info');
     } else {
-      showBanner('Closing cloud browser session...', 'info');
-      await safeFetchJson('/api/browser/close', { method: 'POST' });
+      showBanner('Closing browser session...', 'info');
+      await fetch('/api/browser/close', { method: 'POST' });
       showBanner('Browser closed.', 'info');
-      await checkStatus();
     }
+    await checkStatus();
   } catch (err) {
     showBanner(err.message, 'error');
   } finally {
@@ -191,19 +114,12 @@ btnToggleBrowser.addEventListener('click', async () => {
 btnStartExtract.addEventListener('click', async () => {
   if (state.isExtracting) return;
 
-  const selectedGroup = groupSelect ? groupSelect.value.trim() : '';
-  if (!selectedGroup) {
-    showBanner('Please select a WhatsApp group from the "Select WhatsApp Group" dropdown first.', 'error');
-    if (groupSelect) groupSelect.focus();
-    return;
-  }
-
   state.isExtracting = true;
   btnStartExtract.disabled = true;
   btnExportExcel.disabled = true;
   progressContainer.classList.remove('hidden');
   progressBar.style.width = '10%';
-  progressMessage.textContent = `Connecting to "${selectedGroup}" in WhatsApp Web...`;
+  progressMessage.textContent = 'Connecting to active group in WhatsApp Web...';
   progressCounter.textContent = '0 found';
   hideBanner();
 
@@ -231,14 +147,16 @@ btnStartExtract.addEventListener('click', async () => {
   };
 
   try {
-    const result = await safeFetchJson('/api/extract', {
+    const res = await fetch('/api/extract', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        inspectSavedProfiles: inspectProfiles,
-        groupTitle: selectedGroup
-      })
+      body: JSON.stringify({ inspectSavedProfiles: inspectProfiles })
     });
+    const result = await res.json();
+
+    if (!res.ok) {
+      throw new Error(result.error || 'Extraction failed');
+    }
 
     eventSource.close();
     progressBar.style.width = '100%';
@@ -350,7 +268,7 @@ btnExportExcel.addEventListener('click', async () => {
   showBanner('Generating formatted Excel file...', 'info');
 
   try {
-    const data = await safeFetchJson('/api/export', {
+    const res = await fetch('/api/export', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -358,6 +276,9 @@ btnExportExcel.addEventListener('click', async () => {
         participants: state.participants
       })
     });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Export failed');
 
     window.location.href = `/api/download/${encodeURIComponent(data.fileName)}`;
     showBanner(`Excel file "${data.fileName}" generated and downloaded!`, 'success');
