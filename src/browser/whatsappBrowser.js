@@ -11,9 +11,10 @@ const logger = require('../utils/logger');
 class WhatsAppBrowser {
   constructor(options = {}) {
     this.sessionPath = options.sessionPath || path.resolve(__dirname, '../../whatsapp-session');
-    // Allow HEADLESS env override (useful for cloud/VPS hosting)
-    const isHeadlessEnv = process.env.HEADLESS === 'true' || (process.platform === 'linux' && !process.env.DISPLAY);
-    this.headless = options.headless !== undefined ? options.headless : isHeadlessEnv;
+    // If running in headless Linux environment (e.g. Docker, Render) without X11, force headless = true
+    const noDisplay = process.platform === 'linux' && !process.env.DISPLAY;
+    const isHeadlessEnv = process.env.HEADLESS === 'true' || process.env.NODE_ENV === 'production' || noDisplay;
+    this.headless = noDisplay ? true : (options.headless !== undefined ? options.headless : isHeadlessEnv);
     this.context = null;
     this.page = null;
     this.isRunning = false;

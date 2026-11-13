@@ -17,9 +17,11 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'ui')));
 
-// Global state
+// Global state - Determine headless mode (headless in Linux/Docker/Cloud, or when HEADLESS=true / NODE_ENV=production)
+const isHeadless = process.env.HEADLESS === 'true' || process.env.NODE_ENV === 'production' || (process.platform === 'linux' && !process.env.DISPLAY);
+
 const browserController = new WhatsAppBrowser({
-  headless: false,
+  headless: isHeadless,
   sessionPath: path.resolve(__dirname, '../whatsapp-session')
 });
 
